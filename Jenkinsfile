@@ -19,7 +19,7 @@ pipeline{
 	    stage('Push docker Image to hub')
 	        steps{
 	            script{
-	                sh 'docker login -u <hub_name> -p $(password variable)'
+	                sh 'docker login -u <hub_name> -p $(pwd variable)'
 	                sh 'docker push <docker-hub_name>/<image_name>'
 	            }
 	        }
