@@ -1,0 +1,103 @@
+---
+
+- hosts: "{{ inventory }}"
+
+
+  vars_prompt:
+    - name: windows_admin_password
+      prompt: Please Enter your AD account password
+      private: true
+
+  tasks:
+    - name: install epel-release
+      yum:
+        name: epel-release
+      ignore_errors: yes
+
+    - name: install pip command to enable installation of python commands.
+      yum:
+        name: /usr/lib/python2.7/site-packages/pip
+        state: present
+      ignore_errors: yes
+
+    - name: install realmd and it's dependencies for CentOS 7
+      yum:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - sssd
+        - realmd
+        - oddjob
+        - oddjob-mkhomedir
+        - adcli  
+        - samba-common
+        - samba-common-tools
+        - krb5-workstation
+        - openldap-clients
+        - policycoreutils-python
+      when: ansible_facts['distribution_major_version'] == "7"
+      notify:
+        - "restart service"
+
+    - name: install realmd and it's dependencies for CentOS 8
+      yum:
+        name: sssd,realmd,oddjob,oddjob-mkhomedir,adcli,samba-common,samba-common-tools,krb5-workstation,openldap-clients,python3-libselinux
+        state: present
+      when: ansible_facts['distribution_major_version'] == "8"
+      notify:
+        - "restart service"
+
+    - name: Install pexpect using pip
+      pip:
+        name: pexpect
+
+    - name: Joining server to active Directory
+      expect:
+        command: realm join WS2K22DNSDC01.netsec.local --user=Julius-ad
+        responses:
+          Password for Julius-ad: "{{ windows_admin_password }}"
+      ignore_errors: yes
+
+    - name: Allowing Access to the Linux Team AD group
+      lineinfile:
+        dest: "/etc/sssd/sssd.conf"
+        insertafter: '^id_provider'
+        line: "simple_allow_groups = ad_linuxteam"
+ 
+    - name: disable fully qualified name only searches
+      lineinfile:
+        dest: /etc/sssd/sssd.conf
+        regexp: '^use_fully_qualified_names'
+        line: "use_fully_qualified_names = False"
+        state: present
+        backup: yes
+      notify:
+        - restart sssd
+
+    - name: setting AD user home directly location on Linux systems
+      lineinfile:
+        dest: /etc/sssd/sssd.conf
+        regexp: '^fallback_homedir'
+        line: "fallback_homedir = /home/%u"
+        state: present
+        backup: yes
+      notify:
+        - restart sssd
+
+  handlers:
+    - name: restart sssd
+      service:
+        name: sssd
+        state: restarted
+
+    - name: start realmd service
+      service:
+        name: realmd
+        state: restarted
+      listen: "restart service"
+
+    - name: enable realmd service
+      service:
+        name: realmd
+        enabled: yes
+      listen: "restart service"
