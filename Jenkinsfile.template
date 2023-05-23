@@ -1,15 +1,18 @@
 pipeline {
     agent {
         node {
-            label 'jenkins-agent-goes-here'
+            label 'devplaybooktestrh8'
             }
       }
+    triggers {
+        pollSCM '* * * * *'
+    }
     stages {
         stage('Build') {
             steps {
                 echo "Building.."
                 sh '''
-                echo "doing build stuff.."
+                echo "try again"
                 '''
             }
         }
@@ -17,7 +20,7 @@ pipeline {
             steps {
                 echo "Testing.."
                 sh '''
-                echo "doing test stuff.."
+                echo "Be focussed"
                 '''
             }
         }
@@ -26,7 +29,8 @@ pipeline {
                 echo 'Deliver....'
                 sh '''
                 echo "doing delivery stuff.."
-            }    '''
+                '''
+            }
         }
     }
 }
