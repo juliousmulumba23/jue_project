@@ -1,0 +1,409 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: AWS automation tool for Fabeel
+Parameters:         #Parameters are values you pass to your template at runtime (Questions/vars_prompt kind of)
+  InstanceTypeParameter:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - m1.small
+      - m1.large
+    Description: Enter t2.micro, m1.small or m1.large. Default is t2.micro NAYE TOGEZA NOSUKAWO AWO!
+
+  InstanceImageIdParameter:
+    Type: String
+    Default: ami-00c39f71452c08778
+    AllowedValues:
+      - ami-00c39f71452c08778
+      - ami-016eb5d644c333ccb
+      - ami-0e38fa17744b2f6a5
+      - ami-07bc04fdc13241142
+      - ami-0e16c3bc75f23e32b
+    Description: Select 1. AmazonLinuxAMI(US-EAST-1), 2. RHEL9AMI(US-EAST-1), 3. MicrosoftWindowsServer'22(US-EAST-1), 4. AmazonLinuxAMI(US-WEST-1), 5. RHEL9AMI(US-WEST-1)  
+
+Mappings:          #Mappings are values that fill themselves out (Defined Variables kind of)
+  SubnetConfig:
+    VPC:
+      CIDR: 10.0.0.0/16
+    Public:
+      CIDR: 10.0.1.0/24
+    Private:
+      CIDR: 10.0.2.0/24
+
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'     #This specifies Virtual Private Cloud
+    Properties:
+      EnableDnsHostnames: 'true'
+      EnableDnsSupport: 'true'
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - VPC
+        - CIDR
+      Tags:
+        - Key: Name
+          Value: Fabeel
+        - Key: Application
+          Value: !Ref 'AWS::StackName'
+        - Key: Network
+          Value: VPC
+
+  PublicSubnet:
+    Type: 'AWS::EC2::Subnet'  #This specifies a subnet for the specified VPC, An intrinsic function is a function available for use in a given programming l
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone:
+        Fn::Select:           #Fn::Select intrinsic function returns a single object from a list of objects by index
+          - 0
+          - Fn::GetAZs: ""    #Fn::GetAZs: region is used to return a list of zones for the specified region.
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - Public
+        - CIDR
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackName'
+        - Key: Network
+          Value: Public
+      MapPublicIpOnLaunch: 'true'
+
+  PrivateSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ""
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - Private
+        - CIDR
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackName'
+        - Key: Network
+          Value: Private
+      MapPublicIpOnLaunch: 'false'
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'      #This allocates an internet gateway for use with a VPC
+    Properties:
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackName'
+        - Key: Network
+          Value: Public
+
+  AttachGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackName'
+        - Key: Network
+          Value: Public
+
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet
+
+  PublicNetworkAcl:
+    Type: 'AWS::EC2::NetworkAcl'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackName'
+        - Key: Network
+          Value: Public
+
+  PrivateNetworkAcl:
+    Type: 'AWS::EC2::NetworkAcl'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackName'
+        - Key: Network
+          Value: Private
+
+  InboundHTTPPublicNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref PublicNetworkAcl
+      RuleNumber: '100'
+      Protocol: '6'
+      RuleAction: 'allow'
+      CidrBlock: 0.0.0.0/0
+      Egress: 'false'
+      PortRange:
+        From: '80'
+        To: '80'
+
+  InboundHTTPSPublicNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref PublicNetworkAcl
+      RuleNumber: '200'
+      Protocol: '6'
+      RuleAction: 'allow'
+      CidrBlock: 0.0.0.0/0
+      Egress: 'false'
+      PortRange:
+        From: '443'
+        To: '443'
+
+  InboundSSHPublicNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref PublicNetworkAcl
+      RuleNumber: '300'
+      Protocol: '6'
+      RuleAction: 'allow'
+      CidrBlock: 0.0.0.0/0
+      Egress: 'false'
+      PortRange:
+        From: '22'
+        To: '22'
+
+  InboundEphemeralPublicNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref PublicNetworkAcl
+      RuleNumber: '400'
+      Protocol: '6'
+      RuleAction: 'allow'
+      CidrBlock: 0.0.0.0/0
+      Egress: 'false'
+      PortRange:
+        From: '1024'
+        To: '65535'
+
+  OutBoundPublicNetworkAclEntry:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref PublicNetworkAcl
+      RuleNumber: '100'
+      Protocol: '6'
+      RuleAction: 'allow'
+      CidrBlock: 0.0.0.0/0
+      Egress: 'true'         #Egress means data leaving a network and transferring to an external location.
+      PortRange:
+        From: '0'
+        To: '65535'
+
+  PublicSubnetNetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      NetworkAclId: !Ref PublicNetworkAcl
+
+  PrivateSubnetNetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      NetworkAclId: !Ref PrivateNetworkAcl
+
+  NewKeyPair:
+    Type: 'AWS::EC2::KeyPair'
+    Properties:
+      KeyName: LinuxClass101
+
+  LinuxClassInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !Ref InstanceImageIdParameter
+      InstanceType: !Ref InstanceTypeParameter 
+      KeyName: 'LinuxClass101'
+      UserData:
+        Fn::Base64:          #The Property UserData must be a base64-encoded text. We use Fn::Base64 to encode the data in base64
+          !Sub |        #The intrinsic function Fn::Sub/!Sub | substitutes variables. You can use this function to construct commands or outputs that include values that aren't available until you create or update a stack.
+            #!/bin/bash -xe
+            IP=`ip a | grep inet`
+            sudo yum update -y
+            sudo yum install httpd -y
+            systemctl enable httpd --now
+            echo "Hello from `hostname`, my IP is $IP" >> /var/www/html/index.html
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: 'true'
+          DeviceIndex: '0'     #Index 0 implies first network interface on the system
+          GroupSet: 
+            - Ref: 'WebDMZSG'
+          SubnetId: !Ref PublicSubnet
+      Tags:
+        - Key: Name
+          Value: LINUX WebServer
+      IamInstanceProfile: !Ref RootInstanceProfile
+    DependsOn: VPC
+
+  WebDMZSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow SSH(22), HTTP(80) and HTTPS(443) to client host
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  RootRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /         #Path defines the path to the role. This parameter is optional, if not included it defaults to "/"
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "*"
+                Resource: "*"
+
+  RootInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles: 
+        - !Ref RootRole
+      
+  
+  
+  
+
+
+          
+
+  
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
